@@ -367,7 +367,7 @@ namespace games::sdvx {
                 { 12, Lights::UPPER_RIGHT_SPEAKER_AVG_R, Lights::UPPER_RIGHT_SPEAKER_AVG_G, Lights::UPPER_RIGHT_SPEAKER_AVG_B },
                 { 56, Lights::LEFT_WING_AVG_R, Lights::LEFT_WING_AVG_G, Lights::LEFT_WING_AVG_B },
                 { 56, Lights::RIGHT_WING_AVG_R, Lights::RIGHT_WING_AVG_G, Lights::RIGHT_WING_AVG_B },
-                { 94, Lights::CONTROL_PANEL_AVG_R, Lights::CONTROL_PANEL_AVG_G, Lights::CONTROL_PANEL_AVG_B },
+                { 0, 0, 0, 0 },  // control panel, handled separately below
                 { 12, Lights::LOWER_LEFT_SPEAKER_AVG_R, Lights::LOWER_LEFT_SPEAKER_AVG_G, Lights::LOWER_LEFT_SPEAKER_AVG_B },
                 { 12, Lights::LOWER_RIGHT_SPEAKER_AVG_R, Lights::LOWER_RIGHT_SPEAKER_AVG_G, Lights::LOWER_RIGHT_SPEAKER_AVG_B },
                 { 14, Lights::WOOFER_AVG_R, Lights::WOOFER_AVG_G, Lights::WOOFER_AVG_B },
@@ -376,16 +376,39 @@ namespace games::sdvx {
 
         // check index bounds
         if (tapeledutils::is_enabled() && index < std::size(mapping)) {
-            auto &map = mapping[index];
-
-            // pick a color to use
-            const auto rgb = tapeledutils::pick_color_from_led_tape(data, map.data_size);
-
-            // program the lights into API
             auto &lights = get_lights();
-            GameAPI::Lights::writeLight(RI_MGR, lights[map.index_r], rgb.r);
-            GameAPI::Lights::writeLight(RI_MGR, lights[map.index_g], rgb.g);
-            GameAPI::Lights::writeLight(RI_MGR, lights[map.index_b], rgb.b);
+
+            // special handling for control panel (index 5) - split into 4 groups
+            if (index == 5) {
+                // control panel has 94 colors total (282 bytes)
+                // split into: 24 colors (0-23), 23 colors (24-46), 23 colors (47-69), 24 colors (70-93)
+                struct ControlPanelMapping {
+                    size_t data_size;
+                    int index_r, index_g, index_b;
+                } cp_mapping[] = {
+                    { 24, Lights::CONTROL_PANEL_24_24_R, Lights::CONTROL_PANEL_24_24_G, Lights::CONTROL_PANEL_24_24_B },
+                    { 23, Lights::CONTROL_PANEL_18_24_R, Lights::CONTROL_PANEL_18_24_G, Lights::CONTROL_PANEL_18_24_B },
+                    { 23, Lights::CONTROL_PANEL_12_24_R, Lights::CONTROL_PANEL_12_24_G, Lights::CONTROL_PANEL_12_24_B },
+                    { 24, Lights::CONTROL_PANEL_6_24_R, Lights::CONTROL_PANEL_6_24_G, Lights::CONTROL_PANEL_6_24_B },
+                };
+
+                // process each control panel group
+                size_t offset = 0;
+                for (const auto &cp_map : cp_mapping) {
+                    const auto rgb = tapeledutils::pick_color_from_led_tape(data + offset, cp_map.data_size);
+                    GameAPI::Lights::writeLight(RI_MGR, lights[cp_map.index_r], rgb.r);
+                    GameAPI::Lights::writeLight(RI_MGR, lights[cp_map.index_g], rgb.g);
+                    GameAPI::Lights::writeLight(RI_MGR, lights[cp_map.index_b], rgb.b);
+                    offset += cp_map.data_size * 3;  // 3 bytes per color (RGB)
+                }
+            } else {
+                // normal processing for other segments
+                auto &map = mapping[index];
+                const auto rgb = tapeledutils::pick_color_from_led_tape(data, map.data_size);
+                GameAPI::Lights::writeLight(RI_MGR, lights[map.index_r], rgb.r);
+                GameAPI::Lights::writeLight(RI_MGR, lights[map.index_g], rgb.g);
+                GameAPI::Lights::writeLight(RI_MGR, lights[map.index_b], rgb.b);
+            }
         }
 
         if (This != custom_node) {
@@ -430,7 +453,7 @@ namespace games::sdvx {
     }
 
     void bi2x_hook_init() {
-        
+
         // avoid double init
         static bool initialized = false;
         if (initialized) {
