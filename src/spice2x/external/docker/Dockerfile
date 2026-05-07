@@ -1,5 +1,7 @@
 FROM ghcr.io/archlinux/archlinux:base-devel
 
+RUN echo "DisableSandbox" >> /etc/pacman.conf
+
 RUN pacman --noconfirm -Syu git \
     bash \
     zip \
